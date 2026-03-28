@@ -1,45 +1,68 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, ChevronDown, Tag } from 'lucide-react'
+
 import { Header } from '../../components/layout/Header'
 import { FiltrosCatalogo } from '../../components/catalogo/FiltrosCatalogo'
 import { ProductoCard } from '../../components/catalogo/ProductoCard'
 import { PageSpinner } from '../../components/ui/Spinner'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Modal } from '../../components/ui/Modal'
+
 import { useInfoTienda, useCategorias, useProductos } from '../../hooks/useTienda'
 import { calcularEstadoTienda } from '../../lib/format'
 
 const PAGE_SIZE = 24
-const CATS_VISIBLES = 8  // cuántas categorías mostrar antes de "Ver más"
+const CATS_VISIBLES = 8
 
 export default function CatalogoPage() {
   const { slug } = useParams()
+
   const [categoriaId, setCategoriaId] = useState(null)
-  const [busqueda,    setBusqueda]    = useState('')
-  const [pagina,      setPagina]      = useState(1)
-  const [modalCats,   setModalCats]   = useState(false)
+  const [busqueda, setBusqueda] = useState('')
+  const [pagina, setPagina] = useState(1)
+  const [modalCats, setModalCats] = useState(false)
+  const [showTop, setShowTop] = useState(false)
 
   const { data: infoTienda } = useInfoTienda(slug)
-  const { data: categorias  } = useCategorias(slug)
+  const { data: categorias } = useCategorias(slug)
 
   const params = {
     ...(categoriaId ? { categoria_id: categoriaId } : {}),
-    ...(busqueda    ? { q: busqueda }               : {}),
+    ...(busqueda ? { q: busqueda } : {}),
     page: pagina,
     page_size: PAGE_SIZE,
   }
-  const { data, isLoading, isFetching } = useProductos(slug, params)
-  const productos  = data?.items || []
-  const totalPags  = data?.pages || 1
 
-  // Aplicar color del tenant
+  const { data, isLoading, isFetching } = useProductos(slug, params)
+
+  const productos = data?.items || []
+  const totalPags = data?.pages || 1
+
+  const cats = categorias || []
+  const catsVisibles = cats.slice(0, CATS_VISIBLES)
+  const hayMasCats = cats.length > CATS_VISIBLES
+
+  // ✅ Optimización
+  const categoriaActivaObj = useMemo(
+    () => cats.find(c => c.id === categoriaId),
+    [cats, categoriaId]
+  )
+
+  // 🎨 Color dinámico
   const colorAcento = infoTienda?.config_visual?.color_acento
   useEffect(() => {
     if (colorAcento) {
       document.documentElement.style.setProperty('--color-acento', colorAcento)
     }
   }, [colorAcento])
+
+  // ⬆️ Scroll top button
+  useEffect(() => {
+    const onScroll = () => setShowTop(window.scrollY > 300)
+    window.addEventListener('scroll', onScroll)
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   const handleCategoria = useCallback((id) => {
     setCategoriaId(id)
@@ -52,24 +75,25 @@ export default function CatalogoPage() {
     setPagina(1)
   }, [])
 
-  const config  = infoTienda?.config_visual || {}
+  const config = infoTienda?.config_visual || {}
   const abierto = calcularEstadoTienda(config)
-  const cats    = categorias || []
-  const catsVisibles = cats.slice(0, CATS_VISIBLES)
-  const hayMasCats   = cats.length > CATS_VISIBLES
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header infoTienda={infoTienda} />
 
+      {/* Mensaje bienvenida */}
       {config.mensaje_bienvenida && (
-        <div className="text-white text-center py-2 text-sm font-medium"
-             style={{ backgroundColor: 'var(--color-acento)' }}>
+        <div
+          className="text-white text-center py-2 text-sm font-medium"
+          style={{ backgroundColor: 'var(--color-acento)' }}
+        >
           {config.mensaje_bienvenida}
         </div>
       )}
 
       <div className="max-w-7xl mx-auto px-4 py-5">
+
         {/* Aviso negocio cerrado */}
         {abierto === false && (
           <div className="mb-4 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3
@@ -84,18 +108,21 @@ export default function CatalogoPage() {
         )}
 
         <div className="flex gap-5">
-          {/* ── Sidebar categorías (solo si hay categorías) ────────────────── */}
+
+          {/* ───────── Sidebar desktop ───────── */}
           {cats.length > 0 && (
             <aside className="hidden lg:block flex-shrink-0 w-52">
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm
                               sticky top-24 overflow-hidden">
+
                 <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
                   <Tag size={14} style={{ color: 'var(--color-acento)' }} />
                   <span className="font-bold text-sm text-gray-800">Categorías</span>
                 </div>
 
                 <div className="py-2">
-                  {/* "Todos" */}
+
+                  {/* Todos */}
                   <button
                     onClick={() => handleCategoria(null)}
                     className={`w-full text-left px-4 py-2 text-sm transition-colors
@@ -107,11 +134,13 @@ export default function CatalogoPage() {
                   >
                     Todos
                     {data?.total > 0 && !categoriaId && (
-                      <span className="text-gray-400 text-xs ml-1">({data.total})</span>
+                      <span className="text-gray-400 text-xs ml-1">
+                        ({data.total})
+                      </span>
                     )}
                   </button>
 
-                  {/* Categorías visibles */}
+                  {/* Categorías */}
                   {catsVisibles.map(cat => (
                     <button
                       key={cat.id}
@@ -139,58 +168,80 @@ export default function CatalogoPage() {
                       Ver más ({cats.length - CATS_VISIBLES})
                     </button>
                   )}
+
                 </div>
               </div>
             </aside>
           )}
 
-          {/* ── Contenido principal ─────────────────────────────────────── */}
+          {/* ───────── Contenido ───────── */}
           <div className="flex-1 min-w-0">
-            {/* Buscador + chips mobile de categorías */}
-            <div className="mb-4 space-y-3">
+
+            {/* Mobile filtros */}
+            <div className="mb-4 space-y-2">
               <FiltrosCatalogo
-                categorias={cats}
+                categorias={catsVisibles}
                 categoriaActiva={categoriaId}
                 onCategoria={handleCategoria}
                 busqueda={busqueda}
                 onBusqueda={handleBusqueda}
-                soloMobile       // oculta chips en desktop (ya está el sidebar)
+                soloMobile
               />
+
+              {hayMasCats && (
+                <button
+                  onClick={() => setModalCats(true)}
+                  className="text-sm text-blue-500"
+                >
+                  Ver más ({cats.length - CATS_VISIBLES})
+                </button>
+              )}
             </div>
 
-            {/* Conteo + estado */}
+            {/* Conteo */}
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm text-gray-500">
-                {categoriaId && cats.find(c => c.id === categoriaId) && (
+                {categoriaActivaObj && (
                   <span className="font-medium text-gray-700 mr-1">
-                    {cats.find(c => c.id === categoriaId)?.nombre} ·
+                    {categoriaActivaObj.nombre} ·
                   </span>
                 )}
                 {data?.total > 0 ? `${data.total} productos` : ''}
               </p>
+
               {isFetching && !isLoading && (
-                <span className="text-xs text-gray-400 animate-pulse">Actualizando...</span>
+                <span className="text-xs text-gray-400 animate-pulse">
+                  Actualizando...
+                </span>
               )}
             </div>
 
-            {/* Grid de productos */}
+            {/* Productos */}
             {isLoading ? (
               <PageSpinner />
             ) : productos.length === 0 ? (
               <EmptyState
                 icon="🔍"
                 title="Sin resultados"
-                description={busqueda ? `No encontramos "${busqueda}".` : 'Sin productos en esta categoría.'}
-                action={busqueda && (
-                  <button onClick={() => handleBusqueda('')} className="btn-secondary text-sm">
-                    Limpiar búsqueda
-                  </button>
-                )}
+                description={
+                  busqueda
+                    ? `No encontramos "${busqueda}".`
+                    : 'Sin productos en esta categoría.'
+                }
+                action={
+                  busqueda && (
+                    <button
+                      onClick={() => handleBusqueda('')}
+                      className="btn-secondary text-sm"
+                    >
+                      Limpiar búsqueda
+                    </button>
+                  )
+                }
               />
             ) : (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5
-                                gap-3 animate-fade-in">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 animate-fade-in">
                   {productos.map(p => (
                     <ProductoCard key={p.id} producto={p} />
                   ))}
@@ -210,6 +261,7 @@ export default function CatalogoPage() {
                     {Array.from({ length: Math.min(5, totalPags) }, (_, i) => {
                       const p = pagina <= 3 ? i + 1 : pagina - 2 + i
                       if (p < 1 || p > totalPags) return null
+
                       return (
                         <button
                           key={p}
@@ -241,7 +293,7 @@ export default function CatalogoPage() {
         </div>
       </div>
 
-      {/* Modal "Ver todas las categorías" */}
+      {/* Modal categorías */}
       <Modal
         open={modalCats}
         onClose={() => setModalCats(false)}
@@ -257,6 +309,7 @@ export default function CatalogoPage() {
           >
             Todos los productos
           </button>
+
           {cats.map(cat => (
             <button
               key={cat.id}
@@ -273,6 +326,16 @@ export default function CatalogoPage() {
           ))}
         </div>
       </Modal>
+
+      {/* Botón scroll top */}
+      {showTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-4 right-4 bg-black text-white px-3 py-2 rounded-full shadow-lg z-50"
+        >
+          ↑
+        </button>
+      )}
     </div>
   )
 }
